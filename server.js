@@ -4,9 +4,9 @@ const crypto = require("node:crypto");
 
 const API_TOKEN = process.env.API_TOKEN || "";
 const ZING_BASE_URL = process.env.ZING_BASE_URL || "https://zingmp3.vn";
-const ZING_VERSION = process.env.ZING_VERSION || "1.10.22";
-const ZING_API_KEY = process.env.ZING_API_KEY || "X583wQe6563223432423432423423423";
-const ZING_SECRET_KEY = process.env.ZING_SECRET_KEY || "2aa2d1c561e809b267f3638c4a307aab";
+const ZING_VERSION = process.env.ZING_VERSION || "1.22.4";
+const ZING_API_KEY = process.env.ZING_API_KEY || "X5BM3w8N7MKozC0B85o4KMlzLZKhV00y";
+const ZING_SECRET_KEY = process.env.ZING_SECRET_KEY || "54a08d682ab8776d23c31cf0be72c679099024db";
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 let cachedCookie = "";
