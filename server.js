@@ -1,18 +1,12 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const http = require("node:http");
 
-const PORT = Number(process.env.PORT || 5555);
 const API_TOKEN = process.env.API_TOKEN || "";
 const ZING_BASE_URL = process.env.ZING_BASE_URL || "https://zingmp3.vn";
 const ZING_VERSION = process.env.ZING_VERSION || "1.6.34";
 const ZING_API_KEY = process.env.ZING_API_KEY || "";
 const ZING_SECRET_KEY = process.env.ZING_SECRET_KEY || "";
-
-if (!API_TOKEN || !ZING_API_KEY || !ZING_SECRET_KEY) {
-  throw new Error("API_TOKEN, ZING_API_KEY and ZING_SECRET_KEY must be configured");
-}
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
 let cachedCookie = "";
@@ -29,6 +23,7 @@ function json(res, status, body) {
 }
 
 function secureTokenEqual(provided) {
+  if (!API_TOKEN) return true;
   if (typeof provided !== "string") return false;
   const left = Buffer.from(provided);
   const right = Buffer.from(API_TOKEN);
@@ -43,10 +38,9 @@ function signature(path, ctime, id = "") {
   const fields = id
     ? `ctime=${ctime}id=${id}version=${ZING_VERSION}`
     : `ctime=${ctime}version=${ZING_VERSION}`;
-  const digest = crypto.createHmac("sha512", ZING_SECRET_KEY)
+  return crypto.createHmac("sha512", ZING_SECRET_KEY)
     .update(path + sha256(fields), "utf8")
     .digest("hex");
-  return digest;
 }
 
 async function getCookie() {
@@ -54,14 +48,16 @@ async function getCookie() {
 
   const response = await fetch(ZING_BASE_URL, {
     headers: { "user-agent": USER_AGENT },
-    signal: AbortSignal.timeout(15000),
   });
   const setCookies = typeof response.headers.getSetCookie === "function"
     ? response.headers.getSetCookie()
     : [response.headers.get("set-cookie") || ""];
+  
+  // SỬA LỖI: Lấy phần tử [0] sau khi tách dấu chấm phẩy để tạo chuỗi Cookie hợp lệ
   const cookies = setCookies
-    .map((item) => item.split(";")[0])
+    .map((item) => item.split(";")[0].trim())
     .filter(Boolean);
+
   if (!response.ok || cookies.length === 0) {
     throw new Error(`Could not obtain Zing session cookie (HTTP ${response.status})`);
   }
@@ -72,6 +68,10 @@ async function getCookie() {
 }
 
 async function zingRequest(path, params, idForSignature = "") {
+  if (!ZING_API_KEY || !ZING_SECRET_KEY) {
+    throw new Error("ZING_API_KEY and ZING_SECRET_KEY must be configured in Vercel");
+  }
+
   const ctime = String(Math.floor(Date.now() / 1000));
   const url = new URL(path, ZING_BASE_URL);
   for (const [key, value] of Object.entries(params)) {
@@ -90,7 +90,6 @@ async function zingRequest(path, params, idForSignature = "") {
       "user-agent": USER_AGENT,
       accept: "application/json, text/plain, */*",
     },
-    signal: AbortSignal.timeout(20000),
   });
   const text = await response.text();
   let body;
@@ -118,17 +117,18 @@ async function getSong(id) {
   return zingRequest(path, { id }, id);
 }
 
-const server = http.createServer(async (req, res) => {
-  const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  if (req.method === "GET" && requestUrl.pathname === "/health") {
-    return json(res, 200, { ok: true });
-  }
-
-  if (!secureTokenEqual(req.headers["x-api-key"])) {
-    return json(res, 401, { error: "Unauthorized" });
-  }
-
+module.exports = async (req, res) => {
   try {
+    const requestUrl = new URL(req.url, `https://${req.headers.host || "localhost"}`);
+    
+    if (req.method === "GET" && (requestUrl.pathname === "/health" || requestUrl.pathname === "/")) {
+      return json(res, 200, { ok: true, message: "ZingMP3 API is running on Vercel" });
+    }
+
+    if (!secureTokenEqual(req.headers["x-api-key"])) {
+      return json(res, 401, { error: "Unauthorized" });
+    }
+
     if (req.method === "GET" && requestUrl.pathname === "/api/search") {
       const query = (requestUrl.searchParams.get("q") || "").trim();
       if (!query || query.length > 160) {
@@ -161,11 +161,7 @@ const server = http.createServer(async (req, res) => {
 
     return json(res, 404, { error: "Not found" });
   } catch (error) {
-    console.error("Zing API request failed:", error.message);
-    return json(res, 502, { error: "Zing MP3 request failed" });
+    console.error("Server error:", error);
+    return json(res, 500, { error: error.message || "Internal Server Error" });
   }
-});
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Otto Zing MP3 API listening on port ${PORT}`);
-});
+};
