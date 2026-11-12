@@ -8,7 +8,7 @@ const ZING_VERSION = process.env.ZING_VERSION || "1.22.4";
 const ZING_API_KEY = process.env.ZING_API_KEY || "X5BM3w8N7MKozC0B85o4KMlzLZKhV00y";
 const ZING_SECRET_KEY = process.env.ZING_SECRET_KEY || "54a08d682ab8776d23c31cf0be72c679099024db";
 
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 let cachedCookie = "";
 let cookieExpiresAt = 0;
 
@@ -47,13 +47,19 @@ async function getCookie() {
   if (cachedCookie && Date.now() < cookieExpiresAt) return cachedCookie;
 
   const response = await fetch(ZING_BASE_URL, {
-    headers: { "user-agent": USER_AGENT },
+    headers: {
+      "user-agent": USER_AGENT,
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "accept-language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+      "sec-fetch-dest": "document",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-site": "none",
+    },
   });
   const setCookies = typeof response.headers.getSetCookie === "function"
     ? response.headers.getSetCookie()
     : [response.headers.get("set-cookie") || ""];
   
-  // SỬA LỖI: Lấy phần tử [0] sau khi tách dấu chấm phẩy để tạo chuỗi Cookie hợp lệ
   const cookies = setCookies
     .map((item) => item.split(";")[0].trim())
     .filter(Boolean);
@@ -85,10 +91,15 @@ async function zingRequest(path, params, idForSignature = "") {
   const cookie = await getCookie();
   const response = await fetch(url, {
     headers: {
-      cookie,
-      referer: `${ZING_BASE_URL}/`,
+      "cookie": cookie,
+      "referer": `${ZING_BASE_URL}/`,
+      "origin": ZING_BASE_URL,
       "user-agent": USER_AGENT,
-      accept: "application/json, text/plain, */*",
+      "accept": "application/json, text/plain, */*",
+      "accept-language": "vi-VN,vi;q=0.9",
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-site": "same-origin",
     },
   });
   const text = await response.text();
