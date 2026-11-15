@@ -35,10 +35,20 @@ async function ytSearch(query, limit = 5) {
   }));
 }
 
-async function ytGetStream(videoId) {
-  if (!/^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) {
-    throw new Error("Invalid YouTube video ID");
+async function ytGetStream(videoIdOrUrl) {
+  let videoId = videoIdOrUrl.trim();
+  
+  // Nếu truyền vào là URL đầy đủ, tự động tách lấy video ID
+  if (videoId.includes("youtube.com") || videoId.includes("youtu.be")) {
+    const matched = videoId.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+    if (matched) videoId = matched[1];
   }
+
+  // Nới lỏng regex kiểm tra ID (YouTube ID thường là 11 ký tự nhưng chấp nhận từ 5-20 ký tự)
+  if (!/^[a-zA-Z0-9_-]{5,20}$/.test(videoId)) {
+    throw new Error(`Invalid YouTube video ID: ${videoIdOrUrl}`);
+  }
+
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   const info = await ytdl.getInfo(url);
   const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
