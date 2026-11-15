@@ -23,30 +23,36 @@ function isAuthorized(req) {
 }
 
 async function ytSearch(query, limit = 5) {
-  const result = await yts(query);
-  const videos = Array.isArray(result.videos) ? result.videos.slice(0, limit) : [];
-  return videos.map((item) => ({
-    encodeId: item.videoId,
-    id: item.videoId,
-    title: item.title || "Unknown Title",
-    artistsNames: item.author?.name || "YouTube",
-    duration: item.seconds || 0,
-    thumbnail: item.thumbnail || "",
-  }));
+  try {
+    const result = await yts(query);
+    const videos = Array.isArray(result.videos) ? result.videos.slice(0, limit) : [];
+    return videos.map((item) => ({
+      encodeId: item.videoId || item.id,
+      id: item.videoId || item.id,
+      title: item.title || "Unknown Title",
+      artistsNames: item.author?.name || item.author || "YouTube",
+      duration: item.duration || 0,
+      thumbnail: item.thumbnail || "",
+    }));
+  } catch (err) {
+    console.error("Search error:", err);
+    return [];
+  }
 }
 
 async function ytGetStream(videoIdOrUrl) {
-  let videoId = videoIdOrUrl.trim();
+  if (!videoIdOrUrl) throw new Error("Missing video ID");
+  let videoId = String(videoIdOrUrl).trim();
   
-  // Nếu truyền vào là URL đầy đủ, tự động tách lấy video ID
+  // Tách ID nếu truyền vào dạng URL đầy đủ
   if (videoId.includes("youtube.com") || videoId.includes("youtu.be")) {
     const matched = videoId.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
     if (matched) videoId = matched[1];
   }
 
-  // Nới lỏng regex kiểm tra ID (YouTube ID thường là 11 ký tự nhưng chấp nhận từ 5-20 ký tự)
+  // Chuẩn hóa kiểm tra ID
   if (!/^[a-zA-Z0-9_-]{5,20}$/.test(videoId)) {
-    throw new Error(`Invalid YouTube video ID: ${videoIdOrUrl}`);
+    throw new Error(`Invalid YouTube video ID format: ${videoIdOrUrl}`);
   }
 
   const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -67,7 +73,7 @@ module.exports = async (req, res) => {
     const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
     if (requestUrl.pathname === "/health") {
-      return json(res, 200, { ok: true, provider: "youtube-vercel" });
+      return json(res, 200, { ok: true, provider: "youtube-vercel-fixed" });
     }
 
     if (!isAuthorized(req)) {
@@ -102,6 +108,7 @@ module.exports = async (req, res) => {
 
     return json(res, 404, { error: "Not found" });
   } catch (error) {
-    return json(res, 500, { err: -1, error: error.message, stack: error.stack });
+    console.error("Handler error:", error);
+    return json(res, 500, { err: -1, error: error.message });
   }
 };
