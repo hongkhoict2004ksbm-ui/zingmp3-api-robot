@@ -1,4 +1,6 @@
 "use strict";
+process.env.YTDL_NO_UPDATE = "1";
+
 const yts = require("yt-search");
 const ytdl = require("@distube/ytdl-core");
 
@@ -23,7 +25,6 @@ function isAuthorized(req) {
 async function ytSearch(query, limit = 5) {
   const result = await yts(query);
   const videos = Array.isArray(result.videos) ? result.videos.slice(0, limit) : [];
-
   return videos.map((item) => ({
     encodeId: item.videoId,
     id: item.videoId,
@@ -40,8 +41,6 @@ async function ytGetStream(videoId) {
   }
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   const info = await ytdl.getInfo(url);
-
-  // Ưu tiên định dạng m4a / mp4 audio (AAC) để ESP32 giải mã mượt nhất
   const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
   const preferred =
     audioFormats.find((f) => f.container === "mp4" || f.container === "m4a") ||
@@ -53,7 +52,6 @@ async function ytGetStream(videoId) {
   return preferred.url;
 }
 
-// Vercel Serverless Function handler (tương thích hoàn toàn với vercel.json)
 module.exports = async (req, res) => {
   try {
     const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -69,34 +67,24 @@ module.exports = async (req, res) => {
     if (requestUrl.pathname === "/api/search") {
       const query = (requestUrl.searchParams.get("q") || "").trim();
       if (!query) return json(res, 400, { err: -1, msg: "Missing query q" });
-
       const songs = await ytSearch(query, 5);
-      return json(res, 200, {
-        err: 0,
-        msg: "Success",
-        data: { songs },
-      });
+      return json(res, 200, { err: 0, msg: "Success", data: { songs } });
     }
 
     if (requestUrl.pathname === "/api/song") {
       const id = (requestUrl.searchParams.get("id") || "").trim();
       if (!id) return json(res, 400, { err: -1, msg: "Missing id" });
-
       const streamUrl = await ytGetStream(id);
       return json(res, 200, {
         err: 0,
         msg: "Success",
-        data: {
-          "128": streamUrl,
-          "320": streamUrl,
-        },
+        data: { "128": streamUrl, "320": streamUrl },
       });
     }
 
     if (requestUrl.pathname === "/api/song/stream") {
       const id = (requestUrl.searchParams.get("id") || "").trim();
       if (!id) return json(res, 400, { err: -1, msg: "Missing id" });
-
       const streamUrl = await ytGetStream(id);
       res.writeHead(302, { location: streamUrl });
       return res.end();
@@ -104,6 +92,6 @@ module.exports = async (req, res) => {
 
     return json(res, 404, { error: "Not found" });
   } catch (error) {
-    return json(res, 500, { err: -1, error: error.message });
+    return json(res, 500, { err: -1, error: error.message, stack: error.stack });
   }
 };
