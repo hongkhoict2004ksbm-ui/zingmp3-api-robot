@@ -74,58 +74,58 @@ async function getTrackInfo(id) {
   return scdl.getInfo(track.permalink_url);
 }
 
-async function getStreamUrl(id) {
+async function getPlayableTrack(id) {
   const info = await getTrackInfo(id);
   const transcodings = info.media?.transcodings;
   if (!Array.isArray(transcodings) || transcodings.length === 0) {
     throw new Error("This SoundCloud track has no playable audio stream");
   }
-
-  // SoundCloud retired its older MP3/Opus transcodings. Prefer the current AAC HLS stream.
-  const selected = transcodings.find((item) =>
-    item?.format?.protocol === "hls" && /aac/i.test(item?.format?.mime_type || ""),
-  ) || transcodings.find((item) => item?.format?.protocol === "hls") || transcodings[0];
-  if (!selected?.url) throw new Error("SoundCloud did not provide a media URL");
-
-  const clientId = await scdl.getClientID();
-  const endpoint = new URL(selected.url);
-  endpoint.searchParams.set("client_id", clientId);
-  const mediaResponse = await scdl.axios.get(endpoint.toString(), { timeout: 20000 });
-  const streamUrl = mediaResponse.data?.url;
-  if (!streamUrl) throw new Error("SoundCloud did not resolve the audio stream URL");
-  return streamUrl;
+  return info;
 }
 
 function startMp3Stream(req, res, id) {
+  let source = null;
   let ffmpeg = null;
   let settled = false;
   const fail = (error) => {
     if (settled) return;
     settled = true;
     console.error("SoundCloud MP3 stream failed:", error?.message || error);
+    if (source && !source.destroyed) source.destroy();
     if (ffmpeg && !ffmpeg.killed) ffmpeg.kill("SIGKILL");
     if (!res.headersSent) json(res, 502, { err: -1, msg: "Unable to create MP3 audio stream" });
     else res.destroy();
   };
 
-  getStreamUrl(id).then((streamUrl) => {
+  getPlayableTrack(id).then(async (info) => {
     if (settled || res.destroyed) return;
     if (!ffmpegPath) throw new Error("FFmpeg binary is unavailable");
+    // Let soundcloud-downloader fetch and join the HLS segments. FFmpeg only
+    // transcodes that byte stream, avoiding its own long-lived playlist reader.
+    source = await scdl.download(info.permalink_url, false);
+    if (settled || res.destroyed) {
+      if (source && !source.destroyed) source.destroy();
+      return;
+    }
     ffmpeg = spawn(ffmpegPath, [
       "-hide_banner", "-loglevel", "error",
-      "-user_agent", "Mozilla/5.0 OttoRobot/1.0",
-      "-i", streamUrl,
+      "-i", "pipe:0",
       "-vn", "-ac", "1", "-ar", "24000",
       "-codec:a", "libmp3lame", "-b:a", "64k",
       "-f", "mp3", "pipe:1",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
+    ], { stdio: ["pipe", "pipe", "pipe"] });
 
+    console.log("SoundCloud HLS byte stream ready for track " + trackId(id));
+    source.on("error", fail);
+    source.on("end", () => console.log("SoundCloud HLS byte stream ended for track " + trackId(id)));
+    ffmpeg.stdin.on("error", fail);
     ffmpeg.stdout.pipe(res);
     ffmpeg.stderr.on("data", (chunk) => console.error("ffmpeg:", chunk.toString().trim()));
     ffmpeg.on("error", fail);
     ffmpeg.on("close", (code) => {
       if (settled) return;
       settled = true;
+      console.log("SoundCloud FFmpeg exited for track " + trackId(id) + ", code=" + code);
       if (code !== 0) {
         console.error("SoundCloud MP3 stream failed: FFmpeg exited with code " + code);
         if (!res.headersSent) json(res, 502, { err: -1, msg: "Unable to transcode SoundCloud audio" });
@@ -147,9 +147,11 @@ function startMp3Stream(req, res, id) {
     res.on("close", () => {
       if (!res.writableEnded && !settled && ffmpeg && !ffmpeg.killed) {
         settled = true;
+        if (source && !source.destroyed) source.destroy();
         ffmpeg.kill("SIGKILL");
       }
     });
+    source.pipe(ffmpeg.stdin);
   }).catch(fail);
 }
 
