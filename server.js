@@ -115,8 +115,8 @@ function startMp3Stream(req, res, id) {
       "-hide_banner", "-loglevel", "error",
       "-user_agent", "Mozilla/5.0 OttoRobot/1.0",
       "-i", streamUrl,
-      "-vn", "-ac", "2", "-ar", "44100",
-      "-codec:a", "libmp3lame", "-b:a", "128k",
+      "-vn", "-ac", "1", "-ar", "24000",
+      "-codec:a", "libmp3lame", "-b:a", "64k",
       "-f", "mp3", "pipe:1",
     ], { stdio: ["ignore", "pipe", "pipe"] });
 
