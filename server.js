@@ -111,7 +111,7 @@ function startMp3Stream(req, res, id) {
       "-hide_banner", "-loglevel", "error",
       "-i", "pipe:0",
       "-vn", "-ac", "1", "-ar", "24000",
-      "-codec:a", "libmp3lame", "-b:a", "64k",
+      "-codec:a", "libmp3lame", "-b:a", "128k",
       "-f", "mp3", "pipe:1",
     ], { stdio: ["pipe", "pipe", "pipe"] });
 
